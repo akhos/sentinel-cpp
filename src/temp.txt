@@ -1,0 +1,8 @@
+this is a text file 
+the purpose of this file is for testing
+this file is used to test Sentinel program
+The program retrieves the file information 
+It also calculates the Shannon Entropy of the file
+The shanon entropy lower than 6.0 shows that the file is normal
+the shanon entropy between 7.2 to 8.0 shows high chaos in the file
+This is "smoking gun" for encrypted data, compressed files or malware
