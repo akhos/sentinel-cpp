@@ -22,7 +22,8 @@ class Sentinel{
         {
         }
 
-        void extractFileInfo() {
+        void extractFileInfo() // Extracts file information such as name, extension, and size
+        {
             if (std::filesystem::exists(m_filePath)) {
                 m_file_name = m_filePath.filename().string();
                 m_file_extention = m_filePath.extension();
@@ -33,78 +34,98 @@ class Sentinel{
             }
         }
 
-        int countChars()
+        std::vector<char> readFileContent() // Returns the file content as a vector of bytes (chars)
         {
             std::ifstream file(m_filePath, std::ios::binary);
             if (!file)
             {
                 std::cerr << "Could not open the file!" << std::endl;
-                return 1; // Return an error code
+                return {}; // Return empty vector on error
             }
             std::vector<char> content(m_file_size);
             file.read(content.data(), m_file_size);
-
-            for (char byte: content){
-                m_char_counts[static_cast<unsigned char>(byte)]++;
-            }
-                return 0;
+            return content;
         }
 
-        void calculateProbabilities() 
+        std::vector<double> calculateSlidingWindowEntropy(const std::vector<char>& content) // calculates and returns the entropy of each window in a file
         {
-            for (int i = 0 ; i < 256; i++) {
-                if (m_char_counts[i] > 0) {
-                    m_char_probabilities[i] = static_cast<double>(m_char_counts[i]) / m_file_size;
+            const size_t window_size = 1024;
+            std::vector<double> window_entropies;
+            for (size_t i = 0; i < content.size(); i += window_size) {
+                size_t current_window_size = std::min(window_size, content.size() - i);
+                long long window_char_counts[256] = {0};
+
+                for (size_t j = 0; j < current_window_size; ++j) {
+                    window_char_counts[static_cast<unsigned char>(content[i + j])]++;
                 }
-                else {
-                    m_char_probabilities[i] = 0.0;
-                }
+
+                double window_entropy = 0.0;
+                window_entropy = calculateEntropy(window_char_counts, current_window_size); 
+                window_entropies.push_back(window_entropy);
             }   
+            return window_entropies;
         }
 
-        void calculateEntropy() {
-            for (int i = 0 ; i < 256; i++) {
-                if (m_char_probabilities[i] > 0) {
-                    m_entropy -= m_char_probabilities[i] * std::log2(m_char_probabilities[i]);
-                }
-
+        double calculateFileEntropy(const std::vector<char>& content)
+        {
+            const size_t total_chars = content.size();
+            long long char_counts[256] = {0};
+            double m_entropy = 0.0;
+                
+            for (size_t j = 0; j < total_chars; ++j) {
+                char_counts[static_cast<unsigned char>(content[j])]++;
             }
 
+            m_entropy = calculateEntropy(char_counts, total_chars);
+            return m_entropy;
+        }
+
+        double calculateEntropy(const long long char_counts[256], size_t total_chars) {
+            double entropy = 0.0;
+            for (int k = 0; k < 256; ++k) {
+                if (char_counts[k] > 0) {
+                    double probability = static_cast<double>(char_counts[k]) / total_chars;
+                    entropy -= probability * std::log2(probability);
+                }
+            }
+            return entropy;
         }
 
         double getEntropy() const {
             return m_entropy;
         }
 
-        bool analyze()
-        {
-            extractFileInfo();
-            if (countChars() != 0) {
-                std::cerr << "Error counting characters." << std::endl;
-                return false;
+        void printReport(double totalEntropy, const std::vector<double>& windowEntropies) {
+            std::cout << "\n==========================================" << std::endl;
+            std::cout << "       SENTINEL ANALYSIS REPORT           " << std::endl;
+            std::cout << "==========================================" << std::endl;
+            std::cout << "File Name: " << m_file_name << std::endl;
+            std::cout << "Extension: " << m_file_extention << std::endl;
+            std::cout << "File Size: " << m_file_size << " bytes" << std::endl;
+            std::cout << "Total File Entropy: " << std::fixed << std::setprecision(4) << totalEntropy << std::endl;
+            std::cout << "------------------------------------------" << std::endl;
+
+            bool suspiciousFound = false;
+            const size_t window_size = 1024; // Matches your calculation window
+
+            std::cout << "Scanning for suspicious segments..." << std::endl;
+            for (size_t i = 0; i < windowEntropies.size(); ++i) {
+                double entropy = windowEntropies[i];
+                
+                // Threshold: 7.5 is usually the "smoking gun" for encryption
+                if (entropy > 7.5) {
+                    std::cout << "[!] ALERT: High Entropy (" << entropy << ") at Offset: 0x" 
+                            << std::hex << (i * window_size) << std::dec << std::endl;
+                    suspiciousFound = true;
+                }
             }
-            calculateProbabilities();
-            calculateEntropy();
-            return true;
-        }
-        
-        void printReport() const 
-        {
-            std::cout << "\n--- Sentinel Analysis Report ---" << std::endl;
-            std::cout << "File:    " << m_filePath.filename() << std::endl;
-            std::cout << "Size:    " << m_file_size << " bytes" << std::endl;
-            std::cout << "Entropy: " << std::fixed << std::setprecision(4) << m_entropy << std::endl;
 
-            // The "Security Intelligence" Layer
-            std::cout << "Status:  ";
-            if (m_entropy > 7.5)      std::cout << "[CRITICAL] Encrypted/Highly Obfuscated" << std::endl;
-            else if (m_entropy > 6.8) std::cout << "[WARNING] Compressed or Packed" << std::endl;
-            else if (m_entropy > 4.5) std::cout << "[NORMAL] Standard Binary Data" << std::endl;
-            else                      std::cout << "[SAFE] Low-entropy Text/Data" << std::endl;
-            std::cout << "--------------------------------\n" << std::endl;
-        }
+            if (!suspiciousFound) {
+                std::cout << "[+] No suspicious spikes detected." << std::endl;
+            }
 
- 
+            std::cout << "==========================================\n" << std::endl;
+        }  
 };  
 
 
@@ -118,8 +139,16 @@ std::string getFileName() {
 
 int main() {
     Sentinel s{getFileName()};
-    s.analyze();
-    std::cout << "Entropy: " << s.getEntropy() << std::endl;
+    
+    s.extractFileInfo();
+    std::vector<char> content = s.readFileContent();
+    
+    if (!content.empty()) {
+        double total = s.calculateFileEntropy(content);
+        std::vector<double> windows = s.calculateSlidingWindowEntropy(content);
+        
+        s.printReport(total, windows);
+    }
 
     return 0;
 }   
