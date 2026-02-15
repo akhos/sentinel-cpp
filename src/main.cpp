@@ -175,11 +175,8 @@ int main() {
         double total = s.calculateFileEntropy(content);
         std::vector<double> windows = s.calculateSlidingWindowEntropy(content);
         FileInfo fileInfo = s.getFileInfo();
-        exportToJson(total, windows, fileInfo);
         s.printReport(total, windows, fileInfo);
+        exportToJson(total, windows, fileInfo);
     }
-
-
-
     return 0;
 }   
