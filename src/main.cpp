@@ -5,30 +5,33 @@
 #include <filesystem>
 #include <vector>
 
+struct FileInfo {
+    std::string name;
+    std::string extension;
+    std::filesystem::path path{};
+    long long size;
+};
+
 class Sentinel{
     private:
-        std::string m_filename{};
-        std::filesystem::path m_filePath{};
-        std::string m_file_extention{};
-        std::string m_file_name{};
-        long long m_file_size{0};
+        FileInfo m_fileInfo{};
         long long m_char_counts[256] = {0};
         double m_char_probabilities[256] = {0.0};
         double m_entropy{0.0};
 
     public:
         explicit Sentinel(std::string_view fileName):
-        m_filePath(fileName)
+        m_fileInfo{.path = fileName}
         {
         }
 
         void extractFileInfo() // Extracts file information such as name, extension, and size
         {
-            if (std::filesystem::exists(m_filePath)) {
-                m_file_name = m_filePath.filename().string();
-                m_file_extention = m_filePath.extension();
-                m_file_size = std::filesystem::file_size(m_filePath);
-                std::cout << m_file_size << " bytes" << std::endl;
+            if (std::filesystem::exists(m_fileInfo.path)) {
+                m_fileInfo.name = m_fileInfo.path.filename().string();
+                m_fileInfo.extension = m_fileInfo.path.extension();
+                m_fileInfo.size = std::filesystem::file_size(m_fileInfo.path);
+                std::cout << m_fileInfo.size << " bytes" << std::endl;
             } else {
                 std::cout << "No file name found." << std::endl;
             }
@@ -36,14 +39,14 @@ class Sentinel{
 
         std::vector<char> readFileContent() // Returns the file content as a vector of bytes (chars)
         {
-            std::ifstream file(m_filePath, std::ios::binary);
+            std::ifstream file(m_fileInfo.path, std::ios::binary);
             if (!file)
             {
                 std::cerr << "Could not open the file!" << std::endl;
                 return {}; // Return empty vector on error
             }
-            std::vector<char> content(m_file_size);
-            file.read(content.data(), m_file_size);
+            std::vector<char> content(m_fileInfo.size);
+            file.read(content.data(), m_fileInfo.size);
             return content;
         }
 
@@ -91,17 +94,17 @@ class Sentinel{
             return entropy;
         }
 
-        double getEntropy() const {
-            return m_entropy;
+        FileInfo getFileInfo() const {
+            return m_fileInfo;
         }
 
-        void printReport(double totalEntropy, const std::vector<double>& windowEntropies) {
+        void printReport(double totalEntropy, const std::vector<double>& windowEntropies, const FileInfo& fileInfo) {
             std::cout << "\n==========================================" << std::endl;
             std::cout << "       SENTINEL ANALYSIS REPORT           " << std::endl;
             std::cout << "==========================================" << std::endl;
-            std::cout << "File Name: " << m_file_name << std::endl;
-            std::cout << "Extension: " << m_file_extention << std::endl;
-            std::cout << "File Size: " << m_file_size << " bytes" << std::endl;
+            std::cout << "File Name: " << fileInfo.name << std::endl;
+            std::cout << "Extension: " << fileInfo.extension << std::endl;
+            std::cout << "File Size: " << fileInfo.size << " bytes" << std::endl;
             std::cout << "Total File Entropy: " << std::fixed << std::setprecision(4) << totalEntropy << std::endl;
             std::cout << "------------------------------------------" << std::endl;
 
@@ -137,6 +140,31 @@ std::string getFileName() {
     return "/home/ali/CPP/wk1/src/temp.txt";
 }   
 
+void exportToJson(double totalEntropy, const std::vector<double>& windowEntropies, const FileInfo& fileInfo) {
+    std::ofstream jsonFile("scan_results.json");
+    if (!jsonFile) {
+        std::cerr << "Could not create JSON file!" << std::endl;
+        return;
+    }
+
+    jsonFile << "{\n";
+    jsonFile << "  \"filename\": \"" << fileInfo.name << "\",\n";
+    jsonFile << "  \"extension\": \"" << fileInfo.extension << "\",\n";
+    jsonFile << "  \"file_size\": " << fileInfo.size << ",\n";
+    jsonFile << "  \"total_entropy\": " << totalEntropy << ",\n";
+    jsonFile << "  \"window_entropies\": [";
+    
+    for (size_t i = 0; i < windowEntropies.size(); ++i) {
+        jsonFile << windowEntropies[i] << (i == windowEntropies.size() - 1 ? "" : ", ");
+    }
+    
+    jsonFile << "]\n";
+    jsonFile << "}";
+    
+    jsonFile.close();
+    std::cout << "[+] Data exported to scan_results.json" << std::endl;
+}
+
 int main() {
     Sentinel s{getFileName()};
     
@@ -146,9 +174,12 @@ int main() {
     if (!content.empty()) {
         double total = s.calculateFileEntropy(content);
         std::vector<double> windows = s.calculateSlidingWindowEntropy(content);
-        
-        s.printReport(total, windows);
+        FileInfo fileInfo = s.getFileInfo();
+        exportToJson(total, windows, fileInfo);
+        s.printReport(total, windows, fileInfo);
     }
+
+
 
     return 0;
 }   
